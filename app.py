@@ -21,31 +21,35 @@ st.markdown("""
     /* --------------------------------------
        CUSTOM TAB NAVIGATION (Radio Overrides)
        -------------------------------------- */
-    /* Hide the radio button circles completely */
-    div[role="radiogroup"] label > div:first-child {
+    /* Force-hide the radio button circles completely */
+    [data-testid="stSidebar"] label[data-baseweb="radio"] > div:first-child {
         display: none !important;
     }
+    
     /* Style the radio button container (the tab) */
-    div[role="radiogroup"] label {
-        padding: 12px 20px;
-        border-radius: 8px;
-        margin-bottom: 5px;
-        cursor: pointer;
-        transition: background-color 0.2s ease;
+    [data-testid="stSidebar"] label[data-baseweb="radio"] {
+        padding: 12px 20px !important;
+        border-radius: 8px !important;
+        margin-bottom: 5px !important;
+        cursor: pointer !important;
+        transition: background-color 0.2s ease !important;
+        width: 100% !important;
     }
+    
     /* Hover state for inactive tabs */
-    div[role="radiogroup"] label:hover {
-        background-color: #1E1E1E;
+    [data-testid="stSidebar"] label[data-baseweb="radio"]:hover {
+        background-color: #1E1E1E !important;
     }
+    
     /* Active tab styling using the modern :has() selector */
-    div[role="radiogroup"] label:has(input:checked) {
-        background-color: #252526;
+    [data-testid="stSidebar"] label[data-baseweb="radio"]:has(input:checked) {
+        background-color: #252526 !important;
     }
+    
     /* Make the text match the Tkinter font weight */
-    div[role="radiogroup"] label p {
-        font-size: 15px;
-        font-weight: 700;
-        margin: 0;
+    [data-testid="stSidebar"] label[data-baseweb="radio"] div {
+        font-size: 15px !important;
+        font-weight: 700 !important;
     }
     /* -------------------------------------- */
 
@@ -57,10 +61,12 @@ st.markdown("""
         padding: 5px 15px;
         margin-bottom: 20px;
     }
+    
     /* Clean File Uploaders */
     .stFileUploader label {
         display: none;
     }
+    
     /* System Console Log Box */
     .console-box {
         background-color: #1E1E1E;
