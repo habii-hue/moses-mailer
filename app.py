@@ -9,6 +9,7 @@ import zipfile
 import openpyxl
 import unicodedata
 import re
+from difflib import SequenceMatcher
 
 # --- Page Configuration ---
 st.set_page_config(page_title="MOSES Manager", page_icon="🧾", layout="wide", initial_sidebar_state="expanded")
@@ -17,7 +18,7 @@ st.set_page_config(page_title="MOSES Manager", page_icon="🧾", layout="wide", 
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "split"
 if "split_logs" not in st.session_state:
-    st.session_state.split_logs = "> System initialized. Multi-Installment Smart Scanner & Excel Engine online.\n"
+    st.session_state.split_logs = "> System initialized. 4-Tier Smart PDF Scanner & Excel Engine online.\n"
 if "mail_logs" not in st.session_state:
     st.session_state.mail_logs = "> System initialized. Multi-Attachment Mail Engine online.\n"
 
@@ -44,7 +45,7 @@ def log_mail(msg, placeholder=None):
         render_console(placeholder, st.session_state.mail_logs)
 
 # ==========================================
-# SMART TEXT NORMALIZER & 2-TIER MATCHER
+# SMART TEXT NORMALIZER & 4-TIER MATCHER
 # ==========================================
 def normalize_text(s):
     """Flattens newlines, strips accents (Ñ -> N), and removes punctuation/extra spaces."""
@@ -55,15 +56,27 @@ def normalize_text(s):
     s = re.sub(r'[^a-z0-9\s]', ' ', s)
     return re.sub(r'\s+', ' ', s).strip()
 
+def extract_clean_page_text(page):
+    """Extracts text block-by-block so multi-column Canva layouts never interleave."""
+    blocks = page.get_text("blocks") or []
+    # Sort blocks top-to-bottom, left-to-right
+    blocks_sorted = sorted(blocks, key=lambda b: (round(b[1], 1), round(b[0], 1)))
+    block_texts = [b[4] for b in blocks_sorted if len(b) > 4 and isinstance(b[4], str)]
+    return "\n".join(block_texts) + "\n" + (page.get_text("text") or "")
+
 def find_matching_contact(page_text, contacts, name_key=None):
     """
-    2-Tier Smart Matcher:
-    Tier 1: Normalized full-name match (handles line wraps, Ñ, and spacing).
-    Tier 2: Last Name + First Name token match (handles middle initial differences).
+    4-Tier Smart Matcher:
+    Tier 1: Normalized full-name substring match.
+    Tier 2: Last Name + First Name prefix match.
+    Tier 3: Order-independent token bag match (handles 'First Middle Last' vs 'Last, First' & column wraps).
+    Tier 4: Fuzzy token match (handles 1-2 letter typos like PASUCAL vs PASCUAL or Marrgaret vs Margaret).
     """
     norm_page = normalize_text(page_text)
     if not norm_page:
         return None
+    page_tokens = set(norm_page.split())
+    page_words_list = norm_page.split()
 
     # Tier 1: Exact normalized full name
     for c in contacts:
@@ -72,19 +85,61 @@ def find_matching_contact(page_text, contacts, name_key=None):
         if norm_name and norm_name in norm_page:
             return c
 
-    # Tier 2: Match Last Name + First Name (ignores middle initial/name discrepancies)
+    # Tier 2: Match Last Name + First Name in sequence
     for c in contacts:
         raw_name = str(c[name_key]).strip() if name_key else str(c).strip()
         if "," in raw_name:
             last_part, given_part = raw_name.split(",", 1)
             norm_last = normalize_text(last_part)
-            given_tokens = normalize_text(given_part).split()
+            given_tokens = [t for t in normalize_text(given_part).split() if len(t) > 1]
             first_tokens = " ".join(given_tokens[:2]) if len(given_tokens) >= 2 else " ".join(given_tokens[:1])
             search_prefix = f"{norm_last} {first_tokens}".strip()
             if search_prefix and search_prefix in norm_page:
                 return c
 
-    return None
+    # Tier 3: Order-Independent Token Match (All surname tokens + at least 1-2 given name tokens appear anywhere on page)
+    best_tier3 = None
+    best_tier3_score = 0
+    for c in contacts:
+        raw_name = str(c[name_key]).strip() if name_key else str(c).strip()
+        if "," in raw_name:
+            last_part, given_part = raw_name.split(",", 1)
+            last_tokens = [t for t in normalize_text(last_part).split() if len(t) > 1]
+            given_tokens = [t for t in normalize_text(given_part).split() if len(t) > 1]
+            if last_tokens and all(lt in page_tokens for lt in last_tokens):
+                matched_given = [gt for gt in given_tokens if gt in page_tokens]
+                required_given = 2 if len(given_tokens) >= 3 else 1
+                if len(matched_given) >= required_given:
+                    score = len(last_tokens) * 10 + len(matched_given)
+                    if score > best_tier3_score:
+                        best_tier3_score = score
+                        best_tier3 = c
+    if best_tier3 is not None:
+        return best_tier3
+
+    # Tier 4: Fuzzy Token Match (Catches typos like PASUCAL vs PASCUAL, Marrgaret vs Margaret, etc.)
+    def token_fuzzy_in_page(tok, threshold=0.82):
+        if tok in page_tokens:
+            return True
+        return any(SequenceMatcher(None, tok, pw).ratio() >= threshold for pw in page_words_list if abs(len(tok) - len(pw)) <= 2)
+
+    best_tier4 = None
+    best_tier4_score = 0
+    for c in contacts:
+        raw_name = str(c[name_key]).strip() if name_key else str(c).strip()
+        if "," in raw_name:
+            last_part, given_part = raw_name.split(",", 1)
+            last_tokens = [t for t in normalize_text(last_part).split() if len(t) > 1]
+            given_tokens = [t for t in normalize_text(given_part).split() if len(t) > 1]
+            if last_tokens and all(token_fuzzy_in_page(lt) for lt in last_tokens):
+                matched_given = [gt for gt in given_tokens if token_fuzzy_in_page(gt)]
+                required_given = 2 if len(given_tokens) >= 2 else 1
+                if len(matched_given) >= required_given:
+                    score = len(last_tokens) * 10 + len(matched_given)
+                    if score > best_tier4_score:
+                        best_tier4_score = score
+                        best_tier4 = c
+    return best_tier4
 
 def detect_installment(text):
     """Reads the PDF heading to identify which installment receipt is on the page."""
@@ -341,7 +396,7 @@ if st.session_state.active_tab == "split":
             log_split("ERROR: Missing Master PDF or Member Masterlist.", console_slot)
             st.error("Please upload both the Master PDF Document and the Member Masterlist.")
         else:
-            with status_container.status("⚙️ Initializing PDF Extraction Engine...", expanded=True) as status:
+            with status_container.status("⚙️ Initializing 4-Tier PDF Extraction Engine...", expanded=True) as status:
                 try:
                     st.write("📂 Reading member masterlist spreadsheet...")
                     log_split(f"Reading {master_list.name}...", console_slot)
@@ -364,7 +419,7 @@ if st.session_state.active_tab == "split":
                         doc = fitz.open(stream=master_pdf.read(), filetype="pdf")
                         total_pages = len(doc)
                         
-                        st.write(f"🔍 Scanning {total_pages} pages with 2-Tier Smart Name & Installment Matcher...")
+                        st.write(f"🔍 Scanning {total_pages} pages with 4-Tier Smart Name & Installment Matcher...")
                         log_split(f"Loaded {total_pages} pages. Scanning names & installment headings...", console_slot)
                         
                         p_bar = progress_slot.progress(0, text=f"Starting extraction (0/{total_pages} pages)...")
@@ -381,7 +436,7 @@ if st.session_state.active_tab == "split":
                                 p_bar.progress((i + 1) / total_pages, text=f"⏳ Extracting Page {i+1} of {total_pages} ({pct}%)...")
                                 
                                 page = doc[i]
-                                extracted_text = page.get_text("text") or ""
+                                extracted_text = extract_clean_page_text(page)
                                 found_name = find_matching_contact(extracted_text, contacts, name_key=None)
                                 
                                 if found_name:
@@ -411,7 +466,8 @@ if st.session_state.active_tab == "split":
                                     log_split(f"Matched Page {i+1}/{total_pages} -> {final_fname}", console_slot)
                                 else:
                                     unmatched_pages.append(i + 1)
-                                    log_split(f"WARNING: No matching name found on Page {i+1}. Skipping.", console_slot)
+                                    snippet = normalize_text(extracted_text)[:80]
+                                    log_split(f"WARNING: No match on Page {i+1} [Text: {snippet}...]", console_slot)
                                 
                         doc.close()
                         p_bar.progress(1.0, text=f"✅ Completed! {matched_count} of {total_pages} pages extracted (100%).")
@@ -535,7 +591,7 @@ elif st.session_state.active_tab == "mail":
                         p_bar.progress((i + 1) / total_pages, text=f"⏳ Phase 1/2: Scanning Page {i+1} of {total_pages} ({pct}%)...")
                         
                         page = doc[i]
-                        extracted_text = page.get_text("text") or ""
+                        extracted_text = extract_clean_page_text(page)
                         found_contact = find_matching_contact(extracted_text, contacts, name_key=name_col)
                         
                         if found_contact:
