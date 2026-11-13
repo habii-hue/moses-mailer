@@ -59,17 +59,22 @@ st.markdown(f"""
     .stDeployButton {{
         display: none !important;
     }}
+    
+    /* EXPANDED WORKSPACE CONTAINER */
     .block-container {{
-        padding-top: 2rem !important;
-        max-width: 980px !important;
+        padding-top: 2.5rem !important;
+        padding-left: 3rem !important;
+        padding-right: 3rem !important;
+        max-width: 1400px !important;
+        width: 95% !important;
     }}
 
     /* Sidebar Styling */
     [data-testid="stSidebar"] {{
         background-color: #181818 !important;
         border-right: 1px solid #252526;
-        min-width: 240px !important;
-        max-width: 240px !important;
+        min-width: 250px !important;
+        max-width: 250px !important;
     }}
 
     /* Sidebar Navigation Buttons (Zero Radio Circles!) */
@@ -77,7 +82,7 @@ st.markdown(f"""
         width: 100%;
         justify-content: flex-start;
         text-align: left;
-        padding: 12px 18px !important;
+        padding: 14px 20px !important;
         border-radius: 8px !important;
         border: none !important;
         box-shadow: none !important;
@@ -111,13 +116,13 @@ st.markdown(f"""
         background-color: #252526 !important;
     }}
 
-    /* Card Containers */
+    /* Card Containers - Expanded Padding */
     [data-testid="stVerticalBlockBorderWrapper"] {{
         background-color: #252526 !important;
-        border-radius: 10px !important;
+        border-radius: 12px !important;
         border: none !important;
-        padding: 18px 22px !important;
-        margin-bottom: 18px !important;
+        padding: 26px 32px !important;
+        margin-bottom: 22px !important;
     }}
 
     /* Primary Action Button (Pink Full-Width Bar) */
@@ -126,7 +131,7 @@ st.markdown(f"""
         color: white !important;
         border: none !important;
         border-radius: 8px !important;
-        height: 46px !important;
+        height: 50px !important;
         font-weight: 700 !important;
         font-size: 15px !important;
         transition: background-color 0.2s ease !important;
@@ -141,6 +146,7 @@ st.markdown(f"""
         color: #E0E0E0 !important;
         border: 1px solid #3A3A3A !important;
         border-radius: 6px !important;
+        padding: 8px 16px !important;
         font-size: 13px !important;
         font-weight: 600 !important;
     }}
@@ -149,15 +155,19 @@ st.markdown(f"""
         border-color: #FF69B4 !important;
     }}
 
-    /* Compact File Uploaders */
+    /* EXPANDED FILE UPLOADER DROPZONES */
     .stFileUploader label {{
         display: none !important;
     }}
     [data-testid="stFileUploaderDropzone"] {{
         background-color: #1E1E1E !important;
-        border: 1px dashed #444 !important;
-        border-radius: 6px !important;
-        padding: 8px 12px !important;
+        border: 1px dashed #4A4A4A !important;
+        border-radius: 8px !important;
+        padding: 18px 24px !important;
+        min-height: 78px !important;
+    }}
+    [data-testid="stFileUploaderDropzone"]:hover {{
+        border-color: #FF69B4 !important;
     }}
 
     /* Text Inputs */
@@ -166,48 +176,49 @@ st.markdown(f"""
         border: none !important;
         color: white !important;
         border-radius: 6px !important;
+        padding: 10px 14px !important;
     }}
 
     /* System Console Log Box */
     .console-card {{
         background-color: #252526;
-        border-radius: 10px;
-        padding: 15px 20px;
-        margin-top: 25px;
+        border-radius: 12px;
+        padding: 18px 26px;
+        margin-top: 28px;
     }}
     .console-title {{
         font-size: 11px;
         color: #888888;
         font-weight: 800;
         letter-spacing: 0.5px;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
     }}
     .console-box {{
         background-color: transparent;
         color: #A9B7C6;
         font-family: 'Consolas', monospace;
-        font-size: 12.5px;
-        height: 125px;
+        font-size: 13px;
+        height: 160px;
         overflow-y: auto;
         white-space: pre-wrap;
         line-height: 1.5;
     }}
     .row-title {{
         font-weight: 700;
-        font-size: 14px;
+        font-size: 15px;
         color: white;
-        margin-bottom: 2px;
+        margin-bottom: 4px;
     }}
     .row-sub {{
-        font-size: 12.5px;
+        font-size: 13px;
         color: #888888;
-        margin-bottom: 12px;
+        margin-bottom: 14px;
     }}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# SIDEBAR NAVIGATION (BUTTON-BASED, NO CIRCLES)
+# SIDEBAR NAVIGATION
 # ==========================================
 with st.sidebar:
     st.markdown("<div style='color: #FF69B4; font-weight: 900; font-size: 28px; letter-spacing: 0.5px; margin-bottom: 2px;'>MOSES</div>", unsafe_allow_html=True)
@@ -225,11 +236,11 @@ with st.sidebar:
 # VIEW 1: SPLIT RECEIPTS
 # ==========================================
 if st.session_state.active_tab == "split":
-    st.markdown("<h2 style='font-weight: 700; font-size: 26px; margin-bottom: 20px;'>Receipt Splitter</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='font-weight: 700; font-size: 28px; margin-bottom: 22px;'>Receipt Splitter</h2>", unsafe_allow_html=True)
     
     with st.container(border=True):
-        # Row 1: Master PDF
-        c1, c2 = st.columns([1.3, 1])
+        # Row 1: Master PDF (Widened right column for uploader)
+        c1, c2 = st.columns([1, 1.4], gap="large")
         with c1:
             st.markdown("<div class='row-title'>Master PDF Document</div>", unsafe_allow_html=True)
             pdf_status_slot = st.empty()
@@ -240,10 +251,10 @@ if st.session_state.active_tab == "split":
             unsafe_allow_html=True
         )
 
-        st.markdown("<hr style='border-color: #333333; margin: 10px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
 
         # Row 2: Member Masterlist + Get Template
-        c3, c4 = st.columns([1.3, 1])
+        c3, c4 = st.columns([1, 1.4], gap="large")
         with c3:
             st.markdown("<div class='row-title'>Member Masterlist (Excel or CSV)</div>", unsafe_allow_html=True)
             list_status_slot = st.empty()
@@ -261,10 +272,10 @@ if st.session_state.active_tab == "split":
             unsafe_allow_html=True
         )
 
-        st.markdown("<hr style='border-color: #333333; margin: 10px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
 
         # Row 3: Output Destination
-        c5, c6 = st.columns([1.3, 1])
+        c5, c6 = st.columns([1, 1.4], gap="large")
         with c5:
             st.markdown("<div class='row-title'>Output Destination Archive</div>", unsafe_allow_html=True)
             st.markdown("<div class='row-sub'>Bundled as downloadable .ZIP archive for macOS/Windows</div>", unsafe_allow_html=True)
@@ -339,19 +350,19 @@ if st.session_state.active_tab == "split":
 # VIEW 2: BULK MAILER
 # ==========================================
 elif st.session_state.active_tab == "mail":
-    st.markdown("<h2 style='font-weight: 700; font-size: 26px; margin-bottom: 20px;'>Bulk Mail Merge</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='font-weight: 700; font-size: 28px; margin-bottom: 22px;'>Bulk Mail Merge</h2>", unsafe_allow_html=True)
     
     # Credentials Card
     with st.container(border=True):
-        mc1, mc2 = st.columns([1, 2.2])
+        mc1, mc2 = st.columns([1, 2.2], gap="large")
         with mc1:
             st.markdown("<div class='row-title' style='padding-top: 8px;'>Sender Email</div>", unsafe_allow_html=True)
         with mc2:
             sender_email = st.text_input("Sender Email", placeholder="finance.officer@organization.org", label_visibility="collapsed")
             
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
         
-        mc3, mc4 = st.columns([1, 2.2])
+        mc3, mc4 = st.columns([1, 2.2], gap="large")
         with mc3:
             st.markdown("<div class='row-title' style='padding-top: 8px;'>App Password</div>", unsafe_allow_html=True)
         with mc4:
@@ -359,7 +370,7 @@ elif st.session_state.active_tab == "mail":
 
     # Assets & Files Card
     with st.container(border=True):
-        ac1, ac2 = st.columns([1.3, 1])
+        ac1, ac2 = st.columns([1, 1.4], gap="large")
         with ac1:
             st.markdown("<div class='row-title'>Email Banner Image (JPG/PNG)</div>", unsafe_allow_html=True)
             b_slot = st.empty()
@@ -367,9 +378,9 @@ elif st.session_state.active_tab == "mail":
             banner_img = st.file_uploader("banner", type=["jpg", "jpeg", "png"], key="b_img")
         b_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if banner_img else '#888888'};'>{banner_img.name if banner_img else 'No file selected'}</div>", unsafe_allow_html=True)
 
-        st.markdown("<hr style='border-color: #333333; margin: 10px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
 
-        ac3, ac4 = st.columns([1.3, 1])
+        ac3, ac4 = st.columns([1, 1.4], gap="large")
         with ac3:
             st.markdown("<div class='row-title'>Email Signature Image (JPG/PNG)</div>", unsafe_allow_html=True)
             s_slot = st.empty()
@@ -377,15 +388,25 @@ elif st.session_state.active_tab == "mail":
             sig_img = st.file_uploader("sig", type=["jpg", "jpeg", "png"], key="s_img")
         s_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if sig_img else '#888888'};'>{sig_img.name if sig_img else 'No file selected'}</div>", unsafe_allow_html=True)
 
-        st.markdown("<hr style='border-color: #333333; margin: 10px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
 
-        ac5, ac6 = st.columns([1.3, 1])
+        ac5, ac6 = st.columns([1, 1.4], gap="large")
         with ac5:
-            st.markdown("<div class='row-title'>Master PDF & Member Masterlist</div>", unsafe_allow_html=True)
-            st.markdown("<div class='row-sub'>Upload the Canva PDF and Excel/CSV roster for direct dispatch</div>", unsafe_allow_html=True)
+            st.markdown("<div class='row-title'>Master PDF Document</div>", unsafe_allow_html=True)
+            pdf_m_slot = st.empty()
         with ac6:
             master_pdf_mail = st.file_uploader("pdf_mail", type=["pdf"], key="pdf_m")
+        pdf_m_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if master_pdf_mail else '#888888'};'>{master_pdf_mail.name if master_pdf_mail else 'No file selected'}</div>", unsafe_allow_html=True)
+
+        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
+
+        ac7, ac8 = st.columns([1, 1.4], gap="large")
+        with ac7:
+            st.markdown("<div class='row-title'>Member Masterlist (Excel or CSV)</div>", unsafe_allow_html=True)
+            list_m_slot = st.empty()
+        with ac8:
             master_list_mail = st.file_uploader("list_mail", type=["xlsx", "csv"], key="list_m")
+        list_m_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if master_list_mail else '#888888'};'>{master_list_mail.name if master_list_mail else 'No file selected'}</div>", unsafe_allow_html=True)
 
     if st.button("Broadcast Emails", type="primary", use_container_width=True):
         if not all([sender_email, app_password, banner_img, sig_img, master_pdf_mail, master_list_mail]):
