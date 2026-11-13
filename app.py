@@ -12,21 +12,29 @@ import re
 from difflib import SequenceMatcher
 
 # --- Page Configuration ---
-st.set_page_config(page_title="MOSES Manager", page_icon="🧾", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="MOSES · Automated Manager", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 
 # --- Initialize Session State ---
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "split"
 if "split_logs" not in st.session_state:
-    st.session_state.split_logs = "> System initialized. 4-Tier Smart PDF Scanner & Excel Engine online.\n"
+    st.session_state.split_logs = "00:00:01 [INFO]  System initialized. 4-Tier Smart PDF Scanner & Excel Engine online.\n"
 if "mail_logs" not in st.session_state:
-    st.session_state.mail_logs = "> System initialized. Multi-Attachment Mail Engine online.\n"
+    st.session_state.mail_logs = "00:00:01 [INFO]  System initialized. Multi-Attachment Mail Engine online.\n"
 
-def render_console(placeholder, log_text):
+def render_console(placeholder, log_text, badge_text="READY"):
     placeholder.markdown(f"""
-        <div class="console-card">
-            <div class="console-title">SYSTEM LOGS</div>
-            <div class="console-box" id="log-container">{log_text}</div>
+        <div class="shadcn-terminal">
+            <div class="shadcn-terminal-header">
+                <div class="terminal-dots">
+                    <span class="dot dot-red"></span>
+                    <span class="dot dot-amber"></span>
+                    <span class="dot dot-green"></span>
+                    <span class="terminal-title">TRACE · SYSTEM LOGS</span>
+                </div>
+                <span class="shadcn-badge-outline">{badge_text}</span>
+            </div>
+            <div class="shadcn-terminal-body" id="log-container">{log_text}</div>
         </div>
         <script>
             var box = document.getElementById("log-container");
@@ -34,15 +42,15 @@ def render_console(placeholder, log_text):
         </script>
     """, unsafe_allow_html=True)
 
-def log_split(msg, placeholder=None):
-    st.session_state.split_logs += f"> {msg}\n"
+def log_split(msg, placeholder=None, badge="RUNNING"):
+    st.session_state.split_logs += f"› {msg}\n"
     if placeholder:
-        render_console(placeholder, st.session_state.split_logs)
+        render_console(placeholder, st.session_state.split_logs, badge)
 
-def log_mail(msg, placeholder=None):
-    st.session_state.mail_logs += f"> {msg}\n"
+def log_mail(msg, placeholder=None, badge="RUNNING"):
+    st.session_state.mail_logs += f"› {msg}\n"
     if placeholder:
-        render_console(placeholder, st.session_state.mail_logs)
+        render_console(placeholder, st.session_state.mail_logs, badge)
 
 # ==========================================
 # SMART TEXT NORMALIZER & 4-TIER MATCHER
@@ -59,7 +67,6 @@ def normalize_text(s):
 def extract_clean_page_text(page):
     """Extracts text block-by-block so multi-column Canva layouts never interleave."""
     blocks = page.get_text("blocks") or []
-    # Sort blocks top-to-bottom, left-to-right
     blocks_sorted = sorted(blocks, key=lambda b: (round(b[1], 1), round(b[0], 1)))
     block_texts = [b[4] for b in blocks_sorted if len(b) > 4 and isinstance(b[4], str)]
     return "\n".join(block_texts) + "\n" + (page.get_text("text") or "")
@@ -97,7 +104,7 @@ def find_matching_contact(page_text, contacts, name_key=None):
             if search_prefix and search_prefix in norm_page:
                 return c
 
-    # Tier 3: Order-Independent Token Match (All surname tokens + at least 1-2 given name tokens appear anywhere on page)
+    # Tier 3: Order-Independent Token Match
     best_tier3 = None
     best_tier3_score = 0
     for c in contacts:
@@ -117,7 +124,7 @@ def find_matching_contact(page_text, contacts, name_key=None):
     if best_tier3 is not None:
         return best_tier3
 
-    # Tier 4: Fuzzy Token Match (Catches typos like PASUCAL vs PASCUAL, Marrgaret vs Margaret, etc.)
+    # Tier 4: Fuzzy Token Match
     def token_fuzzy_in_page(tok, threshold=0.82):
         if tok in page_tokens:
             return True
@@ -164,205 +171,415 @@ def get_excel_template():
     buf.seek(0)
     return buf.getvalue()
 
-# --- Dynamic CSS for Sidebar Tab Highlighting ---
-split_bg = "#252526" if st.session_state.active_tab == "split" else "transparent"
-split_color = "#FF69B4" if st.session_state.active_tab == "split" else "#888888"
+# --- Dynamic Sidebar State ---
+split_bg = "#26221E" if st.session_state.active_tab == "split" else "transparent"
+split_border = "#3A332C" if st.session_state.active_tab == "split" else "transparent"
+split_color = "#F1A651" if st.session_state.active_tab == "split" else "#C5B4A0"
 
-mail_bg = "#252526" if st.session_state.active_tab == "mail" else "transparent"
-mail_color = "#FF69B4" if st.session_state.active_tab == "mail" else "#888888"
+mail_bg = "#26221E" if st.session_state.active_tab == "mail" else "transparent"
+mail_border = "#3A332C" if st.session_state.active_tab == "mail" else "transparent"
+mail_color = "#F1A651" if st.session_state.active_tab == "mail" else "#C5B4A0"
 
+# ==========================================
+# CODA.IO x SHADCN/UI DESIGN SYSTEM CSS
+# ==========================================
 st.markdown(f"""
     <style>
-    .stApp {{
-        background-color: #1E1E1E;
-        font-family: 'Segoe UI', sans-serif;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    :root {{
+        --background: #141210;
+        --foreground: #F5F2EB;
+        --card: #1C1917;
+        --card-foreground: #F5F2EB;
+        --muted: #26221E;
+        --muted-foreground: #C5B4A0;
+        --border: #2E2924;
+        --input: #221F1B;
+        --primary: #F1A651;
+        --primary-hover: #E0923B;
+        --primary-foreground: #141210;
+        --accent: #9F5556;
+        --ink: #FCD47C;
+        --radius: 8px;
     }}
+
+    .stApp {{
+        background-color: var(--background);
+        color: var(--foreground);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        letter-spacing: -0.14px;
+    }}
+
     header[data-testid="stHeader"] {{
         background: transparent !important;
     }}
     .stDeployButton {{
         display: none !important;
     }}
+
     .block-container {{
-        padding-top: 2.5rem !important;
-        padding-left: 3rem !important;
-        padding-right: 3rem !important;
-        max-width: 1400px !important;
+        padding-top: 2rem !important;
+        padding-left: 3.2rem !important;
+        padding-right: 3.2rem !important;
+        max-width: 1380px !important;
         width: 95% !important;
     }}
+
+    /* --- shadcn Sidebar --- */
     [data-testid="stSidebar"] {{
-        background-color: #181818 !important;
-        border-right: 1px solid #252526;
-        min-width: 250px !important;
-        max-width: 250px !important;
+        background-color: #100E0C !important;
+        border-right: 1px solid var(--border) !important;
+        min-width: 260px !important;
+        max-width: 260px !important;
     }}
+
     [data-testid="stSidebar"] .stButton > button {{
         width: 100%;
         justify-content: flex-start;
         text-align: left;
-        padding: 14px 20px !important;
-        border-radius: 8px !important;
-        border: none !important;
+        padding: 10px 14px !important;
+        border-radius: 6px !important;
+        height: 40px !important;
         box-shadow: none !important;
-        transition: all 0.2s ease;
+        transition: all 0.15s ease;
     }}
     [data-testid="stSidebar"] .stButton > button p {{
-        font-size: 15px !important;
-        font-weight: 700 !important;
+        font-size: 13.5px !important;
+        font-weight: 600 !important;
+        letter-spacing: -0.14px !important;
         margin: 0 !important;
     }}
+
+    /* Sidebar Item 1: Split Receipts */
     [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:nth-of-type(3) .stButton > button {{
         background-color: {split_bg} !important;
+        border: 1px solid {split_border} !important;
     }}
     [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:nth-of-type(3) .stButton > button p {{
         color: {split_color} !important;
     }}
     [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:nth-of-type(3) .stButton > button:hover {{
-        background-color: #252526 !important;
+        background-color: #26221E !important;
     }}
+
+    /* Sidebar Item 2: Bulk Mailer */
     [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:nth-of-type(4) .stButton > button {{
         background-color: {mail_bg} !important;
+        border: 1px solid {mail_border} !important;
     }}
     [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:nth-of-type(4) .stButton > button p {{
         color: {mail_color} !important;
     }}
     [data-testid="stSidebar"] [data-testid="stVerticalBlock"] > div:nth-of-type(4) .stButton > button:hover {{
-        background-color: #252526 !important;
+        background-color: #26221E !important;
     }}
+
+    /* --- shadcn Card Container --- */
     [data-testid="stVerticalBlockBorderWrapper"] {{
-        background-color: #252526 !important;
-        border-radius: 12px !important;
-        border: none !important;
-        padding: 26px 32px !important;
-        margin-bottom: 22px !important;
+        background-color: var(--card) !important;
+        border-radius: 10px !important;
+        border: 1px solid var(--border) !important;
+        padding: 24px 28px !important;
+        margin-bottom: 20px !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.35) !important;
     }}
+
+    /* --- shadcn Primary Button (Coda Dominant #f1a651) --- */
     div.stButton > button[kind="primary"], div.stDownloadButton > button[kind="primary"] {{
-        background-color: #FF69B4 !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        height: 50px !important;
-        font-weight: 700 !important;
-        font-size: 15px !important;
-        transition: background-color 0.2s ease !important;
+        background-color: var(--primary) !important;
+        color: #141210 !important;
+        border: 1px solid #FCD47C !important;
+        border-radius: 7px !important;
+        height: 44px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        letter-spacing: -0.14px !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.25) !important;
+        transition: all 0.15s ease !important;
     }}
-    div.stButton > button[kind="primary"]:hover, div.stDownloadButton > button[kind="primary"]:hover {{
-        background-color: #E0529C !important;
-    }}
-    div.stDownloadButton > button[kind="secondary"] {{
-        background-color: #1E1E1E !important;
-        color: #E0E0E0 !important;
-        border: 1px solid #3A3A3A !important;
-        border-radius: 6px !important;
-        padding: 8px 16px !important;
-        font-size: 13px !important;
+    div.stButton > button[kind="primary"] p, div.stDownloadButton > button[kind="primary"] p {{
+        color: #141210 !important;
         font-weight: 600 !important;
     }}
-    div.stDownloadButton > button[kind="secondary"]:hover {{
-        background-color: #333333 !important;
-        border-color: #FF69B4 !important;
+    div.stButton > button[kind="primary"]:hover, div.stDownloadButton > button[kind="primary"]:hover {{
+        background-color: var(--primary-hover) !important;
+        transform: translateY(-1px);
     }}
+
+    /* --- shadcn Secondary Outline Button (Get Template) --- */
+    div.stDownloadButton > button[kind="secondary"] {{
+        background-color: #221F1B !important;
+        color: var(--foreground) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 6px !important;
+        padding: 6px 14px !important;
+        height: 36px !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+    }}
+    div.stDownloadButton > button[kind="secondary"]:hover {{
+        background-color: var(--muted) !important;
+        border-color: var(--primary) !important;
+    }}
+
+    /* --- shadcn File Uploader Dropzone --- */
     .stFileUploader label {{
         display: none !important;
     }}
     [data-testid="stFileUploaderDropzone"] {{
-        background-color: #1E1E1E !important;
-        border: 1px dashed #4A4A4A !important;
+        background-color: #161412 !important;
+        border: 1px dashed #3A332C !important;
         border-radius: 8px !important;
-        padding: 18px 24px !important;
-        min-height: 78px !important;
+        padding: 16px 20px !important;
+        min-height: 74px !important;
+        transition: border-color 0.15s ease, background-color 0.15s ease !important;
     }}
     [data-testid="stFileUploaderDropzone"]:hover {{
-        border-color: #FF69B4 !important;
+        border-color: var(--primary) !important;
+        background-color: #1E1B18 !important;
     }}
+
+    /* --- shadcn Input --- */
     .stTextInput input {{
-        background-color: #333333 !important;
-        border: none !important;
-        color: white !important;
+        background-color: #141210 !important;
+        border: 1px solid var(--border) !important;
+        color: var(--foreground) !important;
         border-radius: 6px !important;
-        padding: 10px 14px !important;
+        padding: 9px 13px !important;
+        font-size: 13.5px !important;
+        transition: border-color 0.15s ease !important;
     }}
+    .stTextInput input:focus {{
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 2px rgba(241, 166, 81, 0.2) !important;
+    }}
+
+    /* --- shadcn Progress Bar --- */
     .stProgress > div > div > div > div {{
-        background-color: #FF69B4 !important;
+        background: linear-gradient(90deg, #9F5556 0%, #F1A651 65%, #FCD47C 100%) !important;
     }}
-    .console-card {{
-        background-color: #252526;
-        border-radius: 12px;
-        padding: 18px 26px;
-        margin-top: 20px;
+
+    /* --- Custom Coda Typography & shadcn Badges/Breadcrumb --- */
+    .shadcn-breadcrumb {{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        color: var(--muted-foreground);
+        margin-bottom: 10px;
+        font-weight: 500;
     }}
-    .console-title {{
+    .shadcn-breadcrumb .crumb-active {{
+        color: var(--foreground);
+        font-weight: 600;
+    }}
+    .coda-h2 {{
+        font-size: 34px;
+        font-weight: 700;
+        line-height: 1.1;
+        letter-spacing: -0.95px;
+        color: var(--foreground);
+        margin: 0 0 6px 0;
+    }}
+    .coda-subtitle {{
+        font-size: 14px;
+        color: var(--muted-foreground);
+        margin-bottom: 22px;
+        line-height: 1.45;
+    }}
+    .shadcn-badge {{
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 9px;
+        border-radius: 9999px;
         font-size: 11px;
-        color: #888888;
-        font-weight: 800;
-        letter-spacing: 0.5px;
+        font-weight: 600;
+        background-color: rgba(241, 166, 81, 0.14);
+        color: var(--ink);
+        border: 1px solid rgba(241, 166, 81, 0.32);
+    }}
+    .shadcn-badge-terracotta {{
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 9px;
+        border-radius: 9999px;
+        font-size: 11px;
+        font-weight: 600;
+        background-color: rgba(159, 85, 86, 0.22);
+        color: #E6A8A9;
+        border: 1px solid rgba(159, 85, 86, 0.45);
+    }}
+    .shadcn-badge-outline {{
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 5px;
+        font-size: 10.5px;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+        color: var(--ink);
+        background-color: #26221E;
+        border: 1px solid #3A332C;
+    }}
+    .field-label {{
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--foreground);
+        margin-bottom: 3px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }}
+    .field-desc {{
+        font-size: 12.5px;
+        color: var(--muted-foreground);
+        margin-bottom: 8px;
+        line-height: 1.4;
+    }}
+    .file-pill {{
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-family: 'JetBrains Mono', monospace;
+        background-color: #141210;
+        border: 1px solid var(--border);
         margin-bottom: 10px;
     }}
-    .console-box {{
-        background-color: transparent;
-        color: #A9B7C6;
-        font-family: 'Consolas', monospace;
-        font-size: 13px;
-        height: 160px;
+    .shadcn-separator {{
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 18px 0;
+    }}
+
+    /* --- shadcn Terminal Trace Component --- */
+    .shadcn-terminal {{
+        background-color: #100E0C;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }}
+    .shadcn-terminal-header {{
+        background-color: #181512;
+        border-bottom: 1px solid var(--border);
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }}
+    .terminal-dots {{
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }}
+    .dot {{
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }}
+    .dot-red {{ background-color: #9F5556; }}
+    .dot-amber {{ background-color: #F1A651; }}
+    .dot-green {{ background-color: #5E8C61; }}
+    .terminal-title {{
+        margin-left: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted-foreground);
+        letter-spacing: 0.4px;
+    }}
+    .shadcn-terminal-body {{
+        padding: 16px 20px;
+        color: #D6C7B2;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12.5px;
+        height: 170px;
         overflow-y: auto;
         white-space: pre-wrap;
-        line-height: 1.5;
-    }}
-    .row-title {{
-        font-weight: 700;
-        font-size: 15px;
-        color: white;
-        margin-bottom: 4px;
-    }}
-    .row-sub {{
-        font-size: 13px;
-        color: #888888;
-        margin-bottom: 14px;
+        line-height: 1.6;
     }}
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# SIDEBAR NAVIGATION
+# SIDEBAR NAVIGATION (shadcn Sidebar)
 # ==========================================
 with st.sidebar:
-    st.markdown("<div style='color: #FF69B4; font-weight: 900; font-size: 28px; letter-spacing: 0.5px; margin-bottom: 2px;'>MOSES</div>", unsafe_allow_html=True)
-    st.markdown("<div style='color: #888888; font-size: 13px; margin-bottom: 30px;'>Automated Manager</div>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style="padding: 4px 4px 20px 4px; border-bottom: 1px solid #2E2924; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="color: #F1A651; font-weight: 800; font-size: 24px; letter-spacing: -0.8px;">MOSES</span>
+                <span class="shadcn-badge">v2.4</span>
+            </div>
+            <div style="color: #C5B4A0; font-size: 12.5px; margin-top: 2px;">Document & Mail Automation</div>
+        </div>
+        <div style="font-size: 11px; font-weight: 600; color: #8C7E6E; letter-spacing: 0.6px; text-transform: uppercase; padding: 0 4px 8px 4px;">
+            Workspace Modules
+        </div>
+    """, unsafe_allow_html=True)
     
-    if st.button("Split Receipts", key="nav_split", use_container_width=True):
+    if st.button("📄  Receipt Splitter", key="nav_split", use_container_width=True):
         st.session_state.active_tab = "split"
         st.rerun()
         
-    if st.button("Bulk Mailer", key="nav_mail", use_container_width=True):
+    if st.button("✉️  Bulk Mailer", key="nav_mail", use_container_width=True):
         st.session_state.active_tab = "mail"
         st.rerun()
+
+    st.markdown("""
+        <div style="margin-top: 32px; padding: 14px; background-color: #181512; border: 1px solid #2E2924; border-radius: 8px;">
+            <div style="font-size: 11.5px; font-weight: 600; color: #FCD47C; margin-bottom: 6px;">⚡ 4-Tier Engine Active</div>
+            <div style="font-size: 11.5px; color: #C5B4A0; line-height: 1.45;">
+                Handles multi-line wraps, Ñ characters, reversed name orders, and 1st/2nd/3rd installment tags.
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # ==========================================
 # VIEW 1: SPLIT RECEIPTS
 # ==========================================
 if st.session_state.active_tab == "split":
-    st.markdown("<h2 style='font-weight: 700; font-size: 28px; margin-bottom: 22px;'>Receipt Splitter</h2>", unsafe_allow_html=True)
+    st.markdown("""
+        <div class="shadcn-breadcrumb">
+            <span>Workspace</span> <span>/</span> <span>MOSES</span> <span>/</span> <span class="crumb-active">Receipt Splitter</span>
+            <span class="shadcn-badge" style="margin-left: 8px;">PyMuPDF C-Engine</span>
+            <span class="shadcn-badge-terracotta">Multi-Installment Aware</span>
+        </div>
+        <h2 class="coda-h2">Receipt Splitter</h2>
+        <div class="coda-subtitle">Scan multi-page Canva receipt PDFs, match member rosters via 4-tier fuzzy token resolution, and export deduplicated archives.</div>
+    """, unsafe_allow_html=True)
     
     with st.container(border=True):
-        c1, c2 = st.columns([1, 1.4], gap="large")
+        # Row 1: Master PDF
+        c1, c2 = st.columns([1, 1.35], gap="large")
         with c1:
-            st.markdown("<div class='row-title'>Master PDF Document</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>Master PDF Document <span class='shadcn-badge-outline'>.PDF</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Upload the consolidated Canva receipt PDF containing 1st, 2nd, or 3rd installment pages.</div>", unsafe_allow_html=True)
             pdf_status_slot = st.empty()
         with c2:
             master_pdf = st.file_uploader("pdf_split", type=["pdf"], key="pdf_s")
         pdf_status_slot.markdown(
-            f"<div class='row-sub' style='color: {'#FFFFFF' if master_pdf else '#888888'};'>{master_pdf.name if master_pdf else 'No file selected'}</div>",
+            f"<div class='file-pill' style='color: {'#FCD47C' if master_pdf else '#8C7E6E'};'>"
+            f"{'● ' + master_pdf.name if master_pdf else '○ No file selected'}</div>",
             unsafe_allow_html=True
         )
 
-        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr class='shadcn-separator'>", unsafe_allow_html=True)
 
-        c3, c4 = st.columns([1, 1.4], gap="large")
+        # Row 2: Member Masterlist + Get Template
+        c3, c4 = st.columns([1, 1.35], gap="large")
         with c3:
-            st.markdown("<div class='row-title'>Member Masterlist (Excel or CSV)</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>Member Masterlist <span class='shadcn-badge-outline'>.XLSX / .CSV</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Spreadsheet containing member names and email addresses.</div>", unsafe_allow_html=True)
             list_status_slot = st.empty()
             st.download_button(
-                label="Get Template",
+                label="⬇ Get Template",
                 data=get_excel_template(),
                 file_name="MOSES_MasterList_Template.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -371,16 +588,18 @@ if st.session_state.active_tab == "split":
         with c4:
             master_list = st.file_uploader("list_split", type=["xlsx", "csv"], key="list_s")
         list_status_slot.markdown(
-            f"<div class='row-sub' style='color: {'#FFFFFF' if master_list else '#888888'};'>{master_list.name if master_list else 'No file selected'}</div>",
+            f"<div class='file-pill' style='color: {'#FCD47C' if master_list else '#8C7E6E'};'>"
+            f"{'● ' + master_list.name if master_list else '○ No file selected'}</div>",
             unsafe_allow_html=True
         )
 
-        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr class='shadcn-separator'>", unsafe_allow_html=True)
 
-        c5, c6 = st.columns([1, 1.4], gap="large")
+        # Row 3: Output Destination
+        c5, c6 = st.columns([1, 1.35], gap="large")
         with c5:
-            st.markdown("<div class='row-title'>Output Destination Archive</div>", unsafe_allow_html=True)
-            st.markdown("<div class='row-sub'>Bundled as downloadable .ZIP archive (Auto-tags 1st/2nd/3rd Installment)</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>Output Destination Archive <span class='shadcn-badge-outline'>.ZIP</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Automatically tags 1st, 2nd, and 3rd Installment headings so repeated names never overwrite.</div>", unsafe_allow_html=True)
         with c6:
             zip_name = st.text_input("Archive Name", value="MOSES_Extracted_Receipts.zip", label_visibility="collapsed")
 
@@ -389,17 +608,17 @@ if st.session_state.active_tab == "split":
     progress_slot = st.empty()
     download_slot = st.empty()
     console_slot = st.empty()
-    render_console(console_slot, st.session_state.split_logs)
+    render_console(console_slot, st.session_state.split_logs, "IDLE")
 
     if extract_clicked:
         if not master_pdf or not master_list:
-            log_split("ERROR: Missing Master PDF or Member Masterlist.", console_slot)
+            log_split("[ERROR] Missing Master PDF or Member Masterlist.", console_slot, "ERROR")
             st.error("Please upload both the Master PDF Document and the Member Masterlist.")
         else:
             with status_container.status("⚙️ Initializing 4-Tier PDF Extraction Engine...", expanded=True) as status:
                 try:
                     st.write("📂 Reading member masterlist spreadsheet...")
-                    log_split(f"Reading {master_list.name}...", console_slot)
+                    log_split(f"[DATA] Reading {master_list.name}...", console_slot, "PARSING")
                     if master_list.name.endswith('.csv'):
                         df = pd.read_csv(master_list)
                     else:
@@ -407,20 +626,20 @@ if st.session_state.active_tab == "split":
                         
                     name_col = next((c for c in df.columns if 'name' in str(c).lower()), None)
                     if not name_col:
-                        log_split("DATA ERROR: Could not find a 'Name' column in spreadsheet.", console_slot)
+                        log_split("[ERROR] Could not find a 'Name' column in spreadsheet.", console_slot, "ERROR")
                         status.update(label="❌ Extraction Failed: Missing 'Name' column", state="error", expanded=True)
                     else:
                         raw_names = df.dropna(subset=[name_col])[name_col].astype(str).tolist()
                         contacts = sorted(list(set(n.strip() for n in raw_names if n.strip())), key=len, reverse=True)
                         
                         st.write(f"📄 Loading `{master_pdf.name}` into high-speed memory buffer...")
-                        log_split(f"Loading {master_pdf.name} into memory...", console_slot)
+                        log_split(f"[LOAD] Loading {master_pdf.name} into memory...", console_slot, "LOADING")
                         master_pdf.seek(0)
                         doc = fitz.open(stream=master_pdf.read(), filetype="pdf")
                         total_pages = len(doc)
                         
                         st.write(f"🔍 Scanning {total_pages} pages with 4-Tier Smart Name & Installment Matcher...")
-                        log_split(f"Loaded {total_pages} pages. Scanning names & installment headings...", console_slot)
+                        log_split(f"[SCAN] Loaded {total_pages} pages. Scanning names & installment headings...", console_slot, "SCANNING")
                         
                         p_bar = progress_slot.progress(0, text=f"Starting extraction (0/{total_pages} pages)...")
                         zip_buffer = io.BytesIO()
@@ -463,23 +682,23 @@ if st.session_state.active_tab == "split":
                                     
                                     zip_file.writestr(final_fname, pdf_bytes)
                                     matched_count += 1
-                                    log_split(f"Matched Page {i+1}/{total_pages} -> {final_fname}", console_slot)
+                                    log_split(f"[OK] Page {i+1:03d}/{total_pages} -> {final_fname}", console_slot, f"{pct}%")
                                 else:
                                     unmatched_pages.append(i + 1)
                                     snippet = normalize_text(extracted_text)[:80]
-                                    log_split(f"WARNING: No match on Page {i+1} [Text: {snippet}...]", console_slot)
+                                    log_split(f"[WARN] No match on Page {i+1:03d} [Text: {snippet}...]", console_slot, f"{pct}%")
                                 
                         doc.close()
                         p_bar.progress(1.0, text=f"✅ Completed! {matched_count} of {total_pages} pages extracted (100%).")
                         status.update(label=f"✅ Extraction Complete! {matched_count} of {total_pages} PDFs packaged into ZIP.", state="complete", expanded=False)
-                        log_split(f"--- EXTRACTION COMPLETE: {matched_count} of {total_pages} PDFs saved (No overwrites) ---", console_slot)
+                        log_split(f"--- EXTRACTION COMPLETE: {matched_count} of {total_pages} PDFs saved (No overwrites) ---", console_slot, "COMPLETE")
                         if unmatched_pages:
-                            log_split(f"Unmatched Pages ({len(unmatched_pages)}): {unmatched_pages}", console_slot)
+                            log_split(f"[INFO] Unmatched Pages ({len(unmatched_pages)}): {unmatched_pages}", console_slot, "COMPLETE")
                         st.session_state.ready_zip = zip_buffer.getvalue()
                         st.session_state.ready_zip_name = zip_name if zip_name.endswith(".zip") else f"{zip_name}.zip"
                 except Exception as e:
                     status.update(label=f"❌ Error during extraction: {str(e)}", state="error", expanded=True)
-                    log_split(f"ERROR: {str(e)}", console_slot)
+                    log_split(f"[ERROR] {str(e)}", console_slot, "ERROR")
 
     if "ready_zip" in st.session_state:
         download_slot.download_button(
@@ -495,77 +714,91 @@ if st.session_state.active_tab == "split":
 # VIEW 2: BULK MAILER
 # ==========================================
 elif st.session_state.active_tab == "mail":
-    st.markdown("<h2 style='font-weight: 700; font-size: 28px; margin-bottom: 22px;'>Bulk Mail Merge</h2>", unsafe_allow_html=True)
+    st.markdown("""
+        <div class="shadcn-breadcrumb">
+            <span>Workspace</span> <span>/</span> <span>MOSES</span> <span>/</span> <span class="crumb-active">Bulk Mailer</span>
+            <span class="shadcn-badge" style="margin-left: 8px;">STARTTLS :587</span>
+            <span class="shadcn-badge-terracotta">Multi-PDF Bundling</span>
+        </div>
+        <h2 class="coda-h2">Bulk Mail Merge</h2>
+        <div class="coda-subtitle">Automatically group 1st, 2nd, and 3rd installment receipts per member and dispatch consolidated HTML emails.</div>
+    """, unsafe_allow_html=True)
     
     with st.container(border=True):
-        mc1, mc2 = st.columns([1, 2.2], gap="large")
+        mc1, mc2 = st.columns([1, 2], gap="large")
         with mc1:
-            st.markdown("<div class='row-title' style='padding-top: 8px;'>Sender Email</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>Sender Email <span class='shadcn-badge-outline'>SMTP</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Official Google Workspace or Gmail address.</div>", unsafe_allow_html=True)
         with mc2:
             sender_email = st.text_input("Sender Email", placeholder="finance.officer@organization.org", label_visibility="collapsed")
             
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<hr class='shadcn-separator'>", unsafe_allow_html=True)
         
-        mc3, mc4 = st.columns([1, 2.2], gap="large")
+        mc3, mc4 = st.columns([1, 2], gap="large")
         with mc3:
-            st.markdown("<div class='row-title' style='padding-top: 8px;'>App Password</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>App Password <span class='shadcn-badge-outline'>16-CHAR</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Google Account 2FA App Password for SMTP authentication.</div>", unsafe_allow_html=True)
         with mc4:
-            app_password = st.text_input("App Password", type="password", placeholder="16-character code", label_visibility="collapsed")
+            app_password = st.text_input("App Password", type="password", placeholder="•••• •••• •••• ••••", label_visibility="collapsed")
 
     with st.container(border=True):
-        ac1, ac2 = st.columns([1, 1.4], gap="large")
+        ac1, ac2 = st.columns([1, 1.35], gap="large")
         with ac1:
-            st.markdown("<div class='row-title'>Email Banner Image (JPG/PNG)</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>Email Banner Image <span class='shadcn-badge-outline'>JPG / PNG</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Header graphic embedded inline at the top of the receipt email.</div>", unsafe_allow_html=True)
             b_slot = st.empty()
         with ac2:
             banner_img = st.file_uploader("banner", type=["jpg", "jpeg", "png"], key="b_img")
-        b_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if banner_img else '#888888'};'>{banner_img.name if banner_img else 'No file selected'}</div>", unsafe_allow_html=True)
+        b_slot.markdown(f"<div class='file-pill' style='color: {'#FCD47C' if banner_img else '#8C7E6E'};'>{'● ' + banner_img.name if banner_img else '○ No file selected'}</div>", unsafe_allow_html=True)
 
-        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr class='shadcn-separator'>", unsafe_allow_html=True)
 
-        ac3, ac4 = st.columns([1, 1.4], gap="large")
+        ac3, ac4 = st.columns([1, 1.35], gap="large")
         with ac3:
-            st.markdown("<div class='row-title'>Email Signature Image (JPG/PNG)</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>Email Signature Image <span class='shadcn-badge-outline'>JPG / PNG</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Signatory graphic embedded above the closing block.</div>", unsafe_allow_html=True)
             s_slot = st.empty()
         with ac4:
             sig_img = st.file_uploader("sig", type=["jpg", "jpeg", "png"], key="s_img")
-        s_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if sig_img else '#888888'};'>{sig_img.name if sig_img else 'No file selected'}</div>", unsafe_allow_html=True)
+        s_slot.markdown(f"<div class='file-pill' style='color: {'#FCD47C' if sig_img else '#8C7E6E'};'>{'● ' + sig_img.name if sig_img else '○ No file selected'}</div>", unsafe_allow_html=True)
 
-        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr class='shadcn-separator'>", unsafe_allow_html=True)
 
-        ac5, ac6 = st.columns([1, 1.4], gap="large")
+        ac5, ac6 = st.columns([1, 1.35], gap="large")
         with ac5:
-            st.markdown("<div class='row-title'>Master PDF Document</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>Master PDF Document <span class='shadcn-badge-outline'>.PDF</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Consolidated receipt PDF to slice and bundle in-memory.</div>", unsafe_allow_html=True)
             pdf_m_slot = st.empty()
         with ac6:
             master_pdf_mail = st.file_uploader("pdf_mail", type=["pdf"], key="pdf_m")
-        pdf_m_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if master_pdf_mail else '#888888'};'>{master_pdf_mail.name if master_pdf_mail else 'No file selected'}</div>", unsafe_allow_html=True)
+        pdf_m_slot.markdown(f"<div class='file-pill' style='color: {'#FCD47C' if master_pdf_mail else '#8C7E6E'};'>{'● ' + master_pdf_mail.name if master_pdf_mail else '○ No file selected'}</div>", unsafe_allow_html=True)
 
-        st.markdown("<hr style='border-color: #333333; margin: 16px 0;'>", unsafe_allow_html=True)
+        st.markdown("<hr class='shadcn-separator'>", unsafe_allow_html=True)
 
-        ac7, ac8 = st.columns([1, 1.4], gap="large")
+        ac7, ac8 = st.columns([1, 1.35], gap="large")
         with ac7:
-            st.markdown("<div class='row-title'>Member Masterlist (Excel or CSV)</div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-label'>Member Masterlist <span class='shadcn-badge-outline'>.XLSX / .CSV</span></div>", unsafe_allow_html=True)
+            st.markdown("<div class='field-desc'>Roster used to match names to recipient emails.</div>", unsafe_allow_html=True)
             list_m_slot = st.empty()
         with ac8:
             master_list_mail = st.file_uploader("list_mail", type=["xlsx", "csv"], key="list_m")
-        list_m_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if master_list_mail else '#888888'};'>{master_list_mail.name if master_list_mail else 'No file selected'}</div>", unsafe_allow_html=True)
+        list_m_slot.markdown(f"<div class='file-pill' style='color: {'#FCD47C' if master_list_mail else '#8C7E6E'};'>{'● ' + master_list_mail.name if master_list_mail else '○ No file selected'}</div>", unsafe_allow_html=True)
 
     send_clicked = st.button("Broadcast Emails", type="primary", use_container_width=True)
     mail_status_container = st.empty()
     mail_progress_slot = st.empty()
     mail_console_slot = st.empty()
-    render_console(mail_console_slot, st.session_state.mail_logs)
+    render_console(mail_console_slot, st.session_state.mail_logs, "IDLE")
 
     if send_clicked:
         if not all([sender_email, app_password, banner_img, sig_img, master_pdf_mail, master_list_mail]):
-            log_mail("ERROR: Please fill all credentials and upload all required files.", mail_console_slot)
+            log_mail("[ERROR] Please fill all credentials and upload all required files.", mail_console_slot, "ERROR")
             st.error("Please fill in all credentials and upload all required files.")
         else:
             with mail_status_container.status("⚙️ Initializing Multi-Attachment Mail Merge...", expanded=True) as status:
                 try:
                     st.write("📂 Parsing member masterlist...")
-                    log_mail("Scanning PDF and grouping multi-installment receipts per member...", mail_console_slot)
+                    log_mail("[INIT] Scanning PDF and grouping multi-installment receipts per member...", mail_console_slot, "GROUPING")
                     if master_list_mail.name.endswith('.csv'):
                         df = pd.read_csv(master_list_mail)
                     else:
@@ -621,16 +854,16 @@ elif st.session_state.active_tab == "mail":
                                 grouped_recipients[recipient_name]["installments"].append(f"Receipt #{idx}")
                                 
                             grouped_recipients[recipient_name]["attachments"].append((att_name, pdf_bytes))
-                            log_mail(f"Queued Page {i+1}: {att_name}", mail_console_slot)
+                            log_mail(f"[QUEUE] Page {i+1:03d}: {att_name}", mail_console_slot, f"P1 · {pct}%")
                         else:
-                            log_mail(f"WARNING: No matching name on Page {i+1}. Skipping.", mail_console_slot)
+                            log_mail(f"[WARN] No matching name on Page {i+1:03d}. Skipping.", mail_console_slot, f"P1 · {pct}%")
                     
                     doc.close()
 
                     # Phase 2: Connect to SMTP and send 1 consolidated email per member
                     st.write(f"🔐 Authenticating with Gmail SMTP Server (`smtp.gmail.com:587`)...")
                     status.update(label="🔐 Phase 2/2: Authenticating with Gmail SMTP Server...")
-                    log_mail(f"Grouped into {len(grouped_recipients)} unique recipients. Connecting to Gmail SMTP...", mail_console_slot)
+                    log_mail(f"[SMTP] Grouped into {len(grouped_recipients)} unique recipients. Connecting...", mail_console_slot, "AUTH")
                     
                     sent_count = 0
                     banner_img.seek(0)
@@ -646,7 +879,7 @@ elif st.session_state.active_tab == "mail":
                         smtp.ehlo()
                         smtp.login(sender_email.strip(), app_password.strip())
                         st.write("🚀 Authentication successful! Broadcasting emails...")
-                        log_mail("Authentication successful. Broadcasting bundled emails...", mail_console_slot)
+                        log_mail("[SMTP] Authentication successful. Broadcasting bundled emails...", mail_console_slot, "SENDING")
                         
                         total_recipients = max(1, len(grouped_recipients))
                         for idx, (recipient_name, info) in enumerate(grouped_recipients.items()):
@@ -659,7 +892,7 @@ elif st.session_state.active_tab == "mail":
                             installments_str = ", ".join(info["installments"])
                             
                             if not recipient_email or recipient_email.lower() == 'nan':
-                                log_mail(f"SKIPPED: {recipient_name} (No Email in sheet)", mail_console_slot)
+                                log_mail(f"[SKIP] {recipient_name} (No Email in sheet)", mail_console_slot, f"P2 · {pct}%")
                                 continue
                             
                             msg = EmailMessage()
@@ -678,7 +911,7 @@ elif st.session_state.active_tab == "mail":
                                     Dear {recipient_name},<br><br>
                                     Greetings!<br><br>
                                     I hope this message finds you well.<br><br>
-                                    This email serves as the <strong style="color: #FF69B4;">official acknowledgment of your membership fee payment ({installments_str})</strong>.<br><br>
+                                    This email serves as the <strong style="color: #9F5556;">official acknowledgment of your membership fee payment ({installments_str})</strong>.<br><br>
                                     Attached to this email {'are your personalized official receipts' if len(attachments) > 1 else 'is your personalized official receipt'} ({len(attachments)} PDF {'files' if len(attachments) > 1 else 'file'}) for your records. Kindly review the attached document(s) and ensure all details are accurate.<br><br>
                                     Should you have any concerns or discrepancies regarding your payment record or the attached receipt(s), please do not hesitate to reply to this email or reach out to the Finance Committee.<br><br>
                                     Thank you for your prompt compliance and continued support.<br><br>
@@ -701,11 +934,11 @@ elif st.session_state.active_tab == "mail":
                             
                             smtp.send_message(msg)
                             sent_count += 1
-                            log_mail(f"Sent ({sent_count}/{len(grouped_recipients)}): {recipient_name} [{len(attachments)} PDF(s): {installments_str}]", mail_console_slot)
+                            log_mail(f"[SENT] ({sent_count}/{len(grouped_recipients)}): {recipient_name} [{len(attachments)} PDF(s): {installments_str}]", mail_console_slot, f"P2 · {pct}%")
                             
                     p_bar.progress(1.0, text=f"✅ Broadcast Complete! Sent {sent_count} consolidated emails (100%).")
                     status.update(label=f"✅ Batch Complete! Successfully emailed {sent_count} members.", state="complete", expanded=False)
-                    log_mail(f"--- BATCH MAIL MERGE COMPLETE ({sent_count} members emailed) ---", mail_console_slot)
+                    log_mail(f"--- BATCH MAIL MERGE COMPLETE ({sent_count} members emailed) ---", mail_console_slot, "COMPLETE")
                 except Exception as e:
                     status.update(label=f"❌ Critical Error: {str(e)}", state="error", expanded=True)
-                    log_mail(f"CRITICAL ERROR: {str(e)}", mail_console_slot)
+                    log_mail(f"[CRITICAL] {str(e)}", mail_console_slot, "ERROR")
