@@ -311,11 +311,11 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
     
-    if st.button("📄  Receipt Splitter", key="nav_split", use_container_width=True):
+    if st.button("Receipt Splitter", key="nav_split", use_container_width=True):
         st.session_state.active_tab = "split"
         st.rerun()
         
-    if st.button("✉️  Bulk Mailer", key="nav_mail", use_container_width=True):
+    if st.button("Bulk Mailer", key="nav_mail", use_container_width=True):
         st.session_state.active_tab = "mail"
         st.rerun()
 
