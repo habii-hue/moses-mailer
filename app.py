@@ -7,6 +7,8 @@ import fitz  # PyMuPDF
 import io
 import zipfile
 import openpyxl
+import unicodedata
+import re
 
 # --- Page Configuration ---
 st.set_page_config(page_title="MOSES Manager", page_icon="🧾", layout="wide", initial_sidebar_state="expanded")
@@ -15,7 +17,7 @@ st.set_page_config(page_title="MOSES Manager", page_icon="🧾", layout="wide", 
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "split"
 if "split_logs" not in st.session_state:
-    st.session_state.split_logs = "> System initialized. Multi-Installment Scanner & Excel Engine online.\n"
+    st.session_state.split_logs = "> System initialized. Multi-Installment Smart Scanner & Excel Engine online.\n"
 if "mail_logs" not in st.session_state:
     st.session_state.mail_logs = "> System initialized. Multi-Attachment Mail Engine online.\n"
 
@@ -23,8 +25,12 @@ def render_console(placeholder, log_text):
     placeholder.markdown(f"""
         <div class="console-card">
             <div class="console-title">SYSTEM LOGS</div>
-            <div class="console-box">{log_text}</div>
+            <div class="console-box" id="log-container">{log_text}</div>
         </div>
+        <script>
+            var box = document.getElementById("log-container");
+            if (box) {{ box.scrollTop = box.scrollHeight; }}
+        </script>
     """, unsafe_allow_html=True)
 
 def log_split(msg, placeholder=None):
@@ -37,9 +43,52 @@ def log_mail(msg, placeholder=None):
     if placeholder:
         render_console(placeholder, st.session_state.mail_logs)
 
+# ==========================================
+# SMART TEXT NORMALIZER & 2-TIER MATCHER
+# ==========================================
+def normalize_text(s):
+    """Flattens newlines, strips accents (Ñ -> N), and removes punctuation/extra spaces."""
+    if not s:
+        return ""
+    s = unicodedata.normalize('NFKD', str(s)).encode('ASCII', 'ignore').decode('ASCII')
+    s = s.lower()
+    s = re.sub(r'[^a-z0-9\s]', ' ', s)
+    return re.sub(r'\s+', ' ', s).strip()
+
+def find_matching_contact(page_text, contacts, name_key=None):
+    """
+    2-Tier Smart Matcher:
+    Tier 1: Normalized full-name match (handles line wraps, Ñ, and spacing).
+    Tier 2: Last Name + First Name token match (handles middle initial differences).
+    """
+    norm_page = normalize_text(page_text)
+    if not norm_page:
+        return None
+
+    # Tier 1: Exact normalized full name
+    for c in contacts:
+        raw_name = str(c[name_key]).strip() if name_key else str(c).strip()
+        norm_name = normalize_text(raw_name)
+        if norm_name and norm_name in norm_page:
+            return c
+
+    # Tier 2: Match Last Name + First Name (ignores middle initial/name discrepancies)
+    for c in contacts:
+        raw_name = str(c[name_key]).strip() if name_key else str(c).strip()
+        if "," in raw_name:
+            last_part, given_part = raw_name.split(",", 1)
+            norm_last = normalize_text(last_part)
+            given_tokens = normalize_text(given_part).split()
+            first_tokens = " ".join(given_tokens[:2]) if len(given_tokens) >= 2 else " ".join(given_tokens[:1])
+            search_prefix = f"{norm_last} {first_tokens}".strip()
+            if search_prefix and search_prefix in norm_page:
+                return c
+
+    return None
+
 def detect_installment(text):
     """Reads the PDF heading to identify which installment receipt is on the page."""
-    upper_text = text.upper()
+    upper_text = (text or "").upper()
     if "FIRST INSTALLMENT" in upper_text or "1ST INSTALLMENT" in upper_text:
         return "First Installment"
     elif "SECOND INSTALLMENT" in upper_text or "2ND INSTALLMENT" in upper_text:
@@ -178,11 +227,14 @@ st.markdown(f"""
         border-radius: 6px !important;
         padding: 10px 14px !important;
     }}
+    .stProgress > div > div > div > div {{
+        background-color: #FF69B4 !important;
+    }}
     .console-card {{
         background-color: #252526;
         border-radius: 12px;
         padding: 18px 26px;
-        margin-top: 28px;
+        margin-top: 20px;
     }}
     .console-title {{
         font-size: 11px;
@@ -278,6 +330,7 @@ if st.session_state.active_tab == "split":
             zip_name = st.text_input("Archive Name", value="MOSES_Extracted_Receipts.zip", label_visibility="collapsed")
 
     extract_clicked = st.button("Extract & Rename PDFs", type="primary", use_container_width=True)
+    status_container = st.empty()
     progress_slot = st.empty()
     download_slot = st.empty()
     console_slot = st.empty()
@@ -286,76 +339,91 @@ if st.session_state.active_tab == "split":
     if extract_clicked:
         if not master_pdf or not master_list:
             log_split("ERROR: Missing Master PDF or Member Masterlist.", console_slot)
+            st.error("Please upload both the Master PDF Document and the Member Masterlist.")
         else:
-            log_split(f"Loading {master_pdf.name} into memory...", console_slot)
-            try:
-                if master_list.name.endswith('.csv'):
-                    df = pd.read_csv(master_list)
-                else:
-                    df = pd.read_excel(master_list)
-                    
-                name_col = next((c for c in df.columns if 'name' in str(c).lower()), None)
-                if not name_col:
-                    log_split("DATA ERROR: Could not find a 'Name' column in spreadsheet.", console_slot)
-                else:
-                    # Sort names longest-first to avoid partial substring collisions
-                    raw_names = df.dropna(subset=[name_col])[name_col].astype(str).tolist()
-                    contacts = sorted(list(set(n.strip() for n in raw_names if n.strip())), key=len, reverse=True)
-                    
-                    master_pdf.seek(0)
-                    doc = fitz.open(stream=master_pdf.read(), filetype="pdf")
-                    total_pages = len(doc)
-                    
-                    log_split(f"Loaded {total_pages} pages. Scanning names & installment headings...", console_slot)
-                    p_bar = progress_slot.progress(0)
-                    zip_buffer = io.BytesIO()
-                    matched_count = 0
-                    name_counts = {}
-                    used_filenames = set()
-                    
-                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                        for i in range(total_pages):
-                            page = doc[i]
-                            extracted_text = page.get_text("text") or ""
-                            found_name = next((n for n in contacts if n.lower() in extracted_text.lower()), None)
-                            
-                            if found_name:
-                                safe_name = "".join(c for c in found_name if c not in r'\/*?:"<>|')
-                                installment_label = detect_installment(extracted_text)
-                                name_counts[safe_name] = name_counts.get(safe_name, 0) + 1
+            with status_container.status("⚙️ Initializing PDF Extraction Engine...", expanded=True) as status:
+                try:
+                    st.write("📂 Reading member masterlist spreadsheet...")
+                    log_split(f"Reading {master_list.name}...", console_slot)
+                    if master_list.name.endswith('.csv'):
+                        df = pd.read_csv(master_list)
+                    else:
+                        df = pd.read_excel(master_list)
+                        
+                    name_col = next((c for c in df.columns if 'name' in str(c).lower()), None)
+                    if not name_col:
+                        log_split("DATA ERROR: Could not find a 'Name' column in spreadsheet.", console_slot)
+                        status.update(label="❌ Extraction Failed: Missing 'Name' column", state="error", expanded=True)
+                    else:
+                        raw_names = df.dropna(subset=[name_col])[name_col].astype(str).tolist()
+                        contacts = sorted(list(set(n.strip() for n in raw_names if n.strip())), key=len, reverse=True)
+                        
+                        st.write(f"📄 Loading `{master_pdf.name}` into high-speed memory buffer...")
+                        log_split(f"Loading {master_pdf.name} into memory...", console_slot)
+                        master_pdf.seek(0)
+                        doc = fitz.open(stream=master_pdf.read(), filetype="pdf")
+                        total_pages = len(doc)
+                        
+                        st.write(f"🔍 Scanning {total_pages} pages with 2-Tier Smart Name & Installment Matcher...")
+                        log_split(f"Loaded {total_pages} pages. Scanning names & installment headings...", console_slot)
+                        
+                        p_bar = progress_slot.progress(0, text=f"Starting extraction (0/{total_pages} pages)...")
+                        zip_buffer = io.BytesIO()
+                        matched_count = 0
+                        unmatched_pages = []
+                        name_counts = {}
+                        used_filenames = set()
+                        
+                        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                            for i in range(total_pages):
+                                pct = int(((i + 1) / total_pages) * 100)
+                                status.update(label=f"⏳ Processing Page {i+1} of {total_pages} ({pct}%) — Matched: {matched_count}")
+                                p_bar.progress((i + 1) / total_pages, text=f"⏳ Extracting Page {i+1} of {total_pages} ({pct}%)...")
                                 
-                                if installment_label:
-                                    base_fname = f"{safe_name} - {installment_label}"
+                                page = doc[i]
+                                extracted_text = page.get_text("text") or ""
+                                found_name = find_matching_contact(extracted_text, contacts, name_key=None)
+                                
+                                if found_name:
+                                    safe_name = "".join(c for c in found_name if c not in r'\/*?:"<>|')
+                                    installment_label = detect_installment(extracted_text)
+                                    name_counts[safe_name] = name_counts.get(safe_name, 0) + 1
+                                    
+                                    if installment_label:
+                                        base_fname = f"{safe_name} - {installment_label}"
+                                    else:
+                                        base_fname = f"{safe_name} - Receipt {name_counts[safe_name]}"
+                                    
+                                    final_fname = f"{base_fname}.pdf"
+                                    counter = 2
+                                    while final_fname in used_filenames:
+                                        final_fname = f"{base_fname} ({counter}).pdf"
+                                        counter += 1
+                                    used_filenames.add(final_fname)
+                                    
+                                    single_doc = fitz.open()
+                                    single_doc.insert_pdf(doc, from_page=i, to_page=i)
+                                    pdf_bytes = single_doc.tobytes(garbage=4, deflate=True)
+                                    single_doc.close()
+                                    
+                                    zip_file.writestr(final_fname, pdf_bytes)
+                                    matched_count += 1
+                                    log_split(f"Matched Page {i+1}/{total_pages} -> {final_fname}", console_slot)
                                 else:
-                                    base_fname = f"{safe_name} - Receipt {name_counts[safe_name]}"
+                                    unmatched_pages.append(i + 1)
+                                    log_split(f"WARNING: No matching name found on Page {i+1}. Skipping.", console_slot)
                                 
-                                final_fname = f"{base_fname}.pdf"
-                                counter = 2
-                                while final_fname in used_filenames:
-                                    final_fname = f"{base_fname} ({counter}).pdf"
-                                    counter += 1
-                                used_filenames.add(final_fname)
-                                
-                                single_doc = fitz.open()
-                                single_doc.insert_pdf(doc, from_page=i, to_page=i)
-                                pdf_bytes = single_doc.tobytes(garbage=4, deflate=True)
-                                single_doc.close()
-                                
-                                zip_file.writestr(final_fname, pdf_bytes)
-                                matched_count += 1
-                                log_split(f"Matched Page {i+1}/{total_pages} -> {final_fname}", console_slot)
-                            else:
-                                log_split(f"WARNING: No matching name found on Page {i+1}. Skipping.", console_slot)
-                            
-                            p_bar.progress((i + 1) / total_pages)
-                            
-                    doc.close()
-                    progress_slot.empty()
-                    log_split(f"--- EXTRACTION COMPLETE: {matched_count} of {total_pages} PDFs saved (No overwrites) ---", console_slot)
-                    st.session_state.ready_zip = zip_buffer.getvalue()
-                    st.session_state.ready_zip_name = zip_name if zip_name.endswith(".zip") else f"{zip_name}.zip"
-            except Exception as e:
-                log_split(f"ERROR: {str(e)}", console_slot)
+                        doc.close()
+                        p_bar.progress(1.0, text=f"✅ Completed! {matched_count} of {total_pages} pages extracted (100%).")
+                        status.update(label=f"✅ Extraction Complete! {matched_count} of {total_pages} PDFs packaged into ZIP.", state="complete", expanded=False)
+                        log_split(f"--- EXTRACTION COMPLETE: {matched_count} of {total_pages} PDFs saved (No overwrites) ---", console_slot)
+                        if unmatched_pages:
+                            log_split(f"Unmatched Pages ({len(unmatched_pages)}): {unmatched_pages}", console_slot)
+                        st.session_state.ready_zip = zip_buffer.getvalue()
+                        st.session_state.ready_zip_name = zip_name if zip_name.endswith(".zip") else f"{zip_name}.zip"
+                except Exception as e:
+                    status.update(label=f"❌ Error during extraction: {str(e)}", state="error", expanded=True)
+                    log_split(f"ERROR: {str(e)}", console_slot)
 
     if "ready_zip" in st.session_state:
         download_slot.download_button(
@@ -428,6 +496,7 @@ elif st.session_state.active_tab == "mail":
         list_m_slot.markdown(f"<div class='row-sub' style='color: {'#FFFFFF' if master_list_mail else '#888888'};'>{master_list_mail.name if master_list_mail else 'No file selected'}</div>", unsafe_allow_html=True)
 
     send_clicked = st.button("Broadcast Emails", type="primary", use_container_width=True)
+    mail_status_container = st.empty()
     mail_progress_slot = st.empty()
     mail_console_slot = st.empty()
     render_console(mail_console_slot, st.session_state.mail_logs)
@@ -435,141 +504,152 @@ elif st.session_state.active_tab == "mail":
     if send_clicked:
         if not all([sender_email, app_password, banner_img, sig_img, master_pdf_mail, master_list_mail]):
             log_mail("ERROR: Please fill all credentials and upload all required files.", mail_console_slot)
+            st.error("Please fill in all credentials and upload all required files.")
         else:
-            log_mail("Scanning PDF and grouping multi-installment receipts per member...", mail_console_slot)
-            try:
-                if master_list_mail.name.endswith('.csv'):
-                    df = pd.read_csv(master_list_mail)
-                else:
-                    df = pd.read_excel(master_list_mail)
-                    
-                name_col = next((c for c in df.columns if 'name' in str(c).lower()), None)
-                email_col = next((c for c in df.columns if 'email' in str(c).lower()), None)
-                
-                # Sort contacts by name length descending to prevent partial name collisions
-                raw_contacts = df.dropna(subset=[name_col]).to_dict('records')
-                contacts = sorted(raw_contacts, key=lambda x: len(str(x[name_col]).strip()), reverse=True)
-                
-                master_pdf_mail.seek(0)
-                doc = fitz.open(stream=master_pdf_mail.read(), filetype="pdf")
-                total_pages = len(doc)
-                
-                # Phase 1: Group all matching PDF pages by member so 1 member = 1 email with all their PDFs
-                grouped_Simulation = {}
-                p_bar = mail_progress_slot.progress(0)
-                
-                for i in range(total_pages):
-                    page = doc[i]
-                    extracted_text = page.get_text("text") or ""
-                    found_contact = next(
-                        (c for c in contacts if str(c[name_col]).strip().lower() in extracted_text.lower()),
-                        None
-                    )
-                    
-                    if found_contact:
-                        recipient_name = str(found_contact[name_col]).strip()
-                        recipient_email = str(found_contact[email_col]).strip()
-                        safe_name = "".join(c for c in recipient_name if c not in r'\/*?:"<>|')
-                        installment_label = detect_installment(extracted_text)
-                        
-                        single_doc = fitz.open()
-                        single_doc.insert_pdf(doc, from_page=i, to_page=i)
-                        pdf_bytes = single_doc.tobytes(garbage=4, deflate=True)
-                        single_doc.close()
-                        
-                        if recipient_name not in grouped_Simulation:
-                            grouped_Simulation[recipient_name] = {
-                                "email": recipient_email,
-                                "attachments": [],
-                                "installments": []
-                            }
-                        
-                        idx = len(grouped_Simulation[recipient_name]["attachments"]) + 1
-                        if installment_label:
-                            att_name = f"{safe_name} - {installment_label}.pdf"
-                            grouped_Simulation[recipient_name]["installments"].append(installment_label)
-                        else:
-                            att_name = f"{safe_name} - Receipt {idx}.pdf"
-                            grouped_Simulation[recipient_name]["installments"].append(f"Receipt #{idx}")
-                            
-                        grouped_Simulation[recipient_name]["attachments"].append((att_name, pdf_bytes))
-                        log_mail(f"Queued Page {i+1}: {att_name}", mail_console_slot)
+            with mail_status_container.status("⚙️ Initializing Multi-Attachment Mail Merge...", expanded=True) as status:
+                try:
+                    st.write("📂 Parsing member masterlist...")
+                    log_mail("Scanning PDF and grouping multi-installment receipts per member...", mail_console_slot)
+                    if master_list_mail.name.endswith('.csv'):
+                        df = pd.read_csv(master_list_mail)
                     else:
-                        log_mail(f"WARNING: No matching name on Page {i+1}. Skipping.", mail_console_slot)
+                        df = pd.read_excel(master_list_mail)
                         
-                    p_bar.progress((i + 1) / total_pages)
-                
-                doc.close()
-
-                # Phase 2: Connect to SMTP and send 1 consolidated email per member
-                log_mail(f"Grouped into {len(grouped_Simulation)} unique recipients. Connecting to Gmail SMTP...", mail_console_slot)
-                sent_count = 0
-                banner_bytes = banner_img.read()
-                sig_bytes = sig_img.read()
-                banner_ext = 'jpeg' if banner_img.name.lower().endswith(('.jpg', '.jpeg')) else 'png'
-                sig_ext = 'jpeg' if sig_img.name.lower().endswith(('.jpg', '.jpeg')) else 'png'
-
-                with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-                    smtp.ehlo()
-                    smtp.starttls()
-                    smtp.ehlo()
-                    smtp.login(sender_email.strip(), app_password.strip())
-                    log_mail("Authentication successful. Broadcasting bundled emails...", mail_console_slot)
+                    name_col = next((c for c in df.columns if 'name' in str(c).lower()), None)
+                    email_col = next((c for c in df.columns if 'email' in str(c).lower()), None)
                     
-                    total_recipients = max(1, len(grouped_Simulation))
-                    for idx, (recipient_name, info) in enumerate(grouped_Simulation.items()):
-                        recipient_email = info["email"]
-                        attachments = info["attachments"]
-                        installments_str = ", ".join(info["installments"])
+                    raw_contacts = df.dropna(subset=[name_col]).to_dict('records')
+                    contacts = sorted(raw_contacts, key=lambda x: len(str(x[name_col]).strip()), reverse=True)
+                    
+                    st.write(f"📄 Loading `{master_pdf_mail.name}` and grouping multi-installment pages...")
+                    master_pdf_mail.seek(0)
+                    doc = fitz.open(stream=master_pdf_mail.read(), filetype="pdf")
+                    total_pages = len(doc)
+                    
+                    grouped_recipients = {}
+                    p_bar = mail_progress_slot.progress(0, text="Phase 1/2: Scanning & grouping PDF pages...")
+                    
+                    for i in range(total_pages):
+                        pct = int(((i + 1) / total_pages) * 100)
+                        status.update(label=f"⏳ Phase 1/2: Grouping PDF Pages ({i+1}/{total_pages} — {pct}%)")
+                        p_bar.progress((i + 1) / total_pages, text=f"⏳ Phase 1/2: Scanning Page {i+1} of {total_pages} ({pct}%)...")
                         
-                        if not recipient_email or recipient_email.lower() == 'nan':
-                            log_mail(f"SKIPPED: {recipient_name} (No Email in sheet)", mail_console_slot)
-                            continue
+                        page = doc[i]
+                        extracted_text = page.get_text("text") or ""
+                        found_contact = find_matching_contact(extracted_text, contacts, name_key=name_col)
                         
-                        msg = EmailMessage()
-                        msg['Subject'] = f"Official Receipt: Membership Fee Payment ({installments_str}) - {recipient_name}"
-                        msg['From'] = sender_email.strip()
-                        msg['To'] = recipient_email
+                        if found_contact:
+                            recipient_name = str(found_contact[name_col]).strip()
+                            recipient_email = str(found_contact[email_col]).strip()
+                            safe_name = "".join(c for c in recipient_name if c not in r'\/*?:"<>|')
+                            installment_label = detect_installment(extracted_text)
+                            
+                            single_doc = fitz.open()
+                            single_doc.insert_pdf(doc, from_page=i, to_page=i)
+                            pdf_bytes = single_doc.tobytes(garbage=4, deflate=True)
+                            single_doc.close()
+                            
+                            if recipient_name not in grouped_recipients:
+                                grouped_recipients[recipient_name] = {
+                                    "email": recipient_email,
+                                    "attachments": [],
+                                    "installments": []
+                                }
+                            
+                            idx = len(grouped_recipients[recipient_name]["attachments"]) + 1
+                            if installment_label:
+                                att_name = f"{safe_name} - {installment_label}.pdf"
+                                grouped_recipients[recipient_name]["installments"].append(installment_label)
+                            else:
+                                att_name = f"{safe_name} - Receipt {idx}.pdf"
+                                grouped_recipients[recipient_name]["installments"].append(f"Receipt #{idx}")
+                                
+                            grouped_recipients[recipient_name]["attachments"].append((att_name, pdf_bytes))
+                            log_mail(f"Queued Page {i+1}: {att_name}", mail_console_slot)
+                        else:
+                            log_mail(f"WARNING: No matching name on Page {i+1}. Skipping.", mail_console_slot)
+                    
+                    doc.close()
+
+                    # Phase 2: Connect to SMTP and send 1 consolidated email per member
+                    st.write(f"🔐 Authenticating with Gmail SMTP Server (`smtp.gmail.com:587`)...")
+                    status.update(label="🔐 Phase 2/2: Authenticating with Gmail SMTP Server...")
+                    log_mail(f"Grouped into {len(grouped_recipients)} unique recipients. Connecting to Gmail SMTP...", mail_console_slot)
+                    
+                    sent_count = 0
+                    banner_img.seek(0)
+                    sig_img.seek(0)
+                    banner_bytes = banner_img.read()
+                    sig_bytes = sig_img.read()
+                    banner_ext = 'jpeg' if banner_img.name.lower().endswith(('.jpg', '.jpeg')) else 'png'
+                    sig_ext = 'jpeg' if sig_img.name.lower().endswith(('.jpg', '.jpeg')) else 'png'
+
+                    with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
+                        smtp.ehlo()
+                        smtp.starttls()
+                        smtp.ehlo()
+                        smtp.login(sender_email.strip(), app_password.strip())
+                        st.write("🚀 Authentication successful! Broadcasting emails...")
+                        log_mail("Authentication successful. Broadcasting bundled emails...", mail_console_slot)
                         
-                        banner_cid = make_msgid()
-                        sig_cid = make_msgid()
-                        
-                        html_body = f"""
-                        <html><body>
-                        <table style="border: 1px solid black; width: 100%; max-width: 650px; border-collapse: collapse;">
-                            <tr><td style="padding: 0;"><img src="cid:{banner_cid[1:-1]}" style="width: 100%; display: block;"></td></tr>
-                            <tr><td style="padding: 20px; font-family: 'Times New Roman', serif; font-size: 14px; line-height: 1.6;">
-                                Dear {recipient_name},<br><br>
-                                Greetings!<br><br>
-                                I hope this message finds you well.<br><br>
-                                This email serves as the <strong style="color: #FF69B4;">official acknowledgment of your membership fee payment ({installments_str})</strong>.<br><br>
-                                Attached to this email {'are your personalized official receipts' if len(attachments) > 1 else 'is your personalized official receipt'} ({len(attachments)} PDF {'files' if len(attachments) > 1 else 'file'}) for your records. Kindly review the attached document(s) and ensure all details are accurate.<br><br>
-                                Should you have any concerns or discrepancies regarding your payment record or the attached receipt(s), please do not hesitate to reply to this email or reach out to the Finance Committee.<br><br>
-                                Thank you for your prompt compliance and continued support.<br><br>
-                                Best regards,<br><br>
-                                <img src="cid:{sig_cid[1:-1]}" style="max-width: 150px; display: block; margin-bottom: 5px;">
-                                Authorized Signatory<br>Finance Committee<br>MOSES Automated System
-                            </td></tr>
-                        </table>
-                        </body></html>
-                        """
-                        
-                        msg.set_content("Please enable HTML to view this email.")
-                        msg.add_alternative(html_body, subtype='html')
-                        
-                        msg.get_payload()[1].add_related(banner_bytes, 'image', banner_ext, cid=banner_cid)
-                        msg.get_payload()[1].add_related(sig_bytes, 'image', sig_ext, cid=sig_cid)
-                        
-                        # Attach all PDFs belonging to this member
-                        for att_filename, att_bytes in attachments:
-                            msg.add_attachment(att_bytes, maintype='application', subtype='pdf', filename=att_filename)
-                        
-                        smtp.send_message(msg)
-                        sent_count += 1
-                        log_mail(f"Sent ({sent_count}/{len(grouped_Simulation)}): {recipient_name} [{len(attachments)} PDF(s): {installments_str}]", mail_console_slot)
-                        p_bar.progress((idx + 1) / total_recipients)
-                        
-                mail_progress_slot.empty()
-                log_mail(f"--- BATCH MAIL MERGE COMPLETE ({sent_count} members emailed) ---", mail_console_slot)
-            except Exception as e:
-                log_mail(f"CRITICAL ERROR: {str(e)}", mail_console_slot)
+                        total_recipients = max(1, len(grouped_recipients))
+                        for idx, (recipient_name, info) in enumerate(grouped_recipients.items()):
+                            pct = int(((idx + 1) / total_recipients) * 100)
+                            status.update(label=f"📨 Phase 2/2: Sending to {recipient_name} ({idx+1}/{total_recipients} — {pct}%)")
+                            p_bar.progress((idx + 1) / total_recipients, text=f"📨 Phase 2/2: Sending Email {idx+1} of {total_recipients} ({pct}%) — {recipient_name}")
+                            
+                            recipient_email = info["email"]
+                            attachments = info["attachments"]
+                            installments_str = ", ".join(info["installments"])
+                            
+                            if not recipient_email or recipient_email.lower() == 'nan':
+                                log_mail(f"SKIPPED: {recipient_name} (No Email in sheet)", mail_console_slot)
+                                continue
+                            
+                            msg = EmailMessage()
+                            msg['Subject'] = f"Official Receipt: Membership Fee Payment ({installments_str}) - {recipient_name}"
+                            msg['From'] = sender_email.strip()
+                            msg['To'] = recipient_email
+                            
+                            banner_cid = make_msgid()
+                            sig_cid = make_msgid()
+                            
+                            html_body = f"""
+                            <html><body>
+                            <table style="border: 1px solid black; width: 100%; max-width: 650px; border-collapse: collapse;">
+                                <tr><td style="padding: 0;"><img src="cid:{banner_cid[1:-1]}" style="width: 100%; display: block;"></td></tr>
+                                <tr><td style="padding: 20px; font-family: 'Times New Roman', serif; font-size: 14px; line-height: 1.6;">
+                                    Dear {recipient_name},<br><br>
+                                    Greetings!<br><br>
+                                    I hope this message finds you well.<br><br>
+                                    This email serves as the <strong style="color: #FF69B4;">official acknowledgment of your membership fee payment ({installments_str})</strong>.<br><br>
+                                    Attached to this email {'are your personalized official receipts' if len(attachments) > 1 else 'is your personalized official receipt'} ({len(attachments)} PDF {'files' if len(attachments) > 1 else 'file'}) for your records. Kindly review the attached document(s) and ensure all details are accurate.<br><br>
+                                    Should you have any concerns or discrepancies regarding your payment record or the attached receipt(s), please do not hesitate to reply to this email or reach out to the Finance Committee.<br><br>
+                                    Thank you for your prompt compliance and continued support.<br><br>
+                                    Best regards,<br><br>
+                                    <img src="cid:{sig_cid[1:-1]}" style="max-width: 150px; display: block; margin-bottom: 5px;">
+                                    Authorized Signatory<br>Finance Committee<br>MOSES Automated System
+                                </td></tr>
+                            </table>
+                            </body></html>
+                            """
+                            
+                            msg.set_content("Please enable HTML to view this email.")
+                            msg.add_alternative(html_body, subtype='html')
+                            
+                            msg.get_payload()[1].add_related(banner_bytes, 'image', banner_ext, cid=banner_cid)
+                            msg.get_payload()[1].add_related(sig_bytes, 'image', sig_ext, cid=sig_cid)
+                            
+                            for att_filename, att_bytes in attachments:
+                                msg.add_attachment(att_bytes, maintype='application', subtype='pdf', filename=att_filename)
+                            
+                            smtp.send_message(msg)
+                            sent_count += 1
+                            log_mail(f"Sent ({sent_count}/{len(grouped_recipients)}): {recipient_name} [{len(attachments)} PDF(s): {installments_str}]", mail_console_slot)
+                            
+                    p_bar.progress(1.0, text=f"✅ Broadcast Complete! Sent {sent_count} consolidated emails (100%).")
+                    status.update(label=f"✅ Batch Complete! Successfully emailed {sent_count} members.", state="complete", expanded=False)
+                    log_mail(f"--- BATCH MAIL MERGE COMPLETE ({sent_count} members emailed) ---", mail_console_slot)
+                except Exception as e:
+                    status.update(label=f"❌ Critical Error: {str(e)}", state="error", expanded=True)
+                    log_mail(f"CRITICAL ERROR: {str(e)}", mail_console_slot)
